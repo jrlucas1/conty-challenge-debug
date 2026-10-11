@@ -88,6 +88,38 @@ describe("aprovação da entrega", () => {
     expect(res.status).toBe(409);
   });
 
+  it("não credita de novo quando a chave volta com um caractere invisível no fim", async () => {
+    const payload = {
+      mission_id: "msn_2044",
+      approved_at: "2026-03-12T21:05:00.000Z",
+      idempotency_key: "pay_7c1",
+    };
+    expect((await postJson(app, "/approvals", payload)).status).toBe(201);
+    const retry = await postJson(app, "/approvals", { ...payload, idempotency_key: "pay_7c1​" });
+    expect(retry.status).toBe(200);
+    const mission = await app.request("/missions/msn_2044");
+    const body = (await mission.json()) as { ledger: unknown[] };
+    expect(body.ledger).toHaveLength(1);
+  });
+
+  it("aceita o último instante do dia do prazo em São Paulo", async () => {
+    const res = await postJson(app, "/approvals", {
+      mission_id: "msn_1842",
+      approved_at: "2026-03-13T02:59:59.999Z",
+      idempotency_key: "pay_last",
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("recusa o primeiro instante do dia seguinte em São Paulo", async () => {
+    const res = await postJson(app, "/approvals", {
+      mission_id: "msn_1842",
+      approved_at: "2026-03-13T03:00:00.000Z",
+      idempotency_key: "pay_first",
+    });
+    expect(res.status).toBe(409);
+  });
+
   it("responde 404 para missão inexistente", async () => {
     const res = await postJson(app, "/approvals", {
       mission_id: "msn_missing",
